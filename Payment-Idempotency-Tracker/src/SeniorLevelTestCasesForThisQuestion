@@ -1,0 +1,344 @@
+import java.util.*;
+
+/**
+ * =========================================
+ * TOKENIZER TESTS
+ * =========================================
+ */
+final class EventTokenizerTest {
+
+    public static void testValidTokenization() {
+
+        EventTokenizer tokenizer = new EventTokenizer();
+
+        List<String> result =
+                tokenizer.tokenize("a=1;b=2;c=3");
+
+        if (result.size() != 3) {
+            throw new RuntimeException("testValidTokenization : fail");
+        }
+
+        if (!result.get(0).equals("a=1")
+                || !result.get(1).equals("b=2")
+                || !result.get(2).equals("c=3")) {
+
+            throw new RuntimeException("testValidTokenization : fail");
+        }
+
+        System.out.println("testValidTokenization : pass");
+    }
+
+    public static void testNullInput() {
+
+        EventTokenizer tokenizer = new EventTokenizer();
+
+        List<String> result =
+                tokenizer.tokenize(null);
+
+        if (!result.isEmpty()) {
+            throw new RuntimeException("testNullInput : fail");
+        }
+
+        System.out.println("testNullInput : pass");
+    }
+
+    public static void testEmptyInput() {
+
+        EventTokenizer tokenizer = new EventTokenizer();
+
+        List<String> result =
+                tokenizer.tokenize("");
+
+        if (!result.isEmpty()) {
+            throw new RuntimeException("testEmptyInput : fail");
+        }
+
+        System.out.println("testEmptyInput : pass");
+    }
+}
+
+/**
+ * =========================================
+ * PARSER TESTS
+ * =========================================
+ */
+final class EventParserTest {
+
+    public static void testValidParsing() {
+
+        EventParser parser = new EventParser();
+
+        List<String> tokens = List.of(
+                "event_id=evt_1",
+                "amount=100",
+                "currency=USD"
+        );
+
+        Optional<Map<String, String>> result =
+                parser.parse(tokens);
+
+        if (result.isEmpty()) {
+            throw new RuntimeException("testValidParsing : fail");
+        }
+
+        Map<String, String> parsedMap = result.get();
+
+        if (!parsedMap.get("event_id").equals("evt_1")
+                || !parsedMap.get("amount").equals("100")
+                || !parsedMap.get("currency").equals("USD")) {
+
+            throw new RuntimeException("testValidParsing : fail");
+        }
+
+        System.out.println("testValidParsing : pass");
+    }
+
+    public static void testDuplicateKeysFail() {
+
+        EventParser parser = new EventParser();
+
+        List<String> tokens = List.of(
+                "amount=100",
+                "amount=200"
+        );
+
+        Optional<Map<String, String>> result =
+                parser.parse(tokens);
+
+        if (result.isPresent()) {
+            throw new RuntimeException("testDuplicateKeysFail : fail");
+        }
+
+        System.out.println("testDuplicateKeysFail : pass");
+    }
+
+    public static void testMalformedKeyValueFail() {
+
+        EventParser parser = new EventParser();
+
+        List<String> tokens = List.of(
+                "event_id=evt_1",
+                "amount100"
+        );
+
+        Optional<Map<String, String>> result =
+                parser.parse(tokens);
+
+        if (result.isPresent()) {
+            throw new RuntimeException("testMalformedKeyValueFail : fail");
+        }
+
+        System.out.println("testMalformedKeyValueFail : pass");
+    }
+
+    public static void testMultipleEqualsAllowed() {
+
+        EventParser parser = new EventParser();
+
+        List<String> tokens = List.of(
+                "currency=USD===",
+                "event_id=evt_1"
+        );
+
+        Optional<Map<String, String>> result =
+                parser.parse(tokens);
+
+        if (result.isEmpty()) {
+            throw new RuntimeException("testMultipleEqualsAllowed : fail");
+        }
+
+        if (!result.get().get("currency").equals("USD===")) {
+            throw new RuntimeException("testMultipleEqualsAllowed : fail");
+        }
+
+        System.out.println("testMultipleEqualsAllowed : pass");
+    }
+}
+
+/**
+ * =========================================
+ * SEMANTIC VALIDATOR TESTS
+ * =========================================
+ */
+final class EventSemanticValidatorTest {
+
+    public static void testValidEvent() {
+
+        Set<String> validIds = Set.of("evt_1");
+
+        EventSemanticValidator validator =
+                new EventSemanticValidator(validIds);
+
+        Map<String, String> parsedMap = new HashMap<>();
+        parsedMap.put("event_id", "evt_1");
+        parsedMap.put("amount", "100");
+        parsedMap.put("currency", "USD");
+
+        Optional<EventDto> result =
+                validator.validateAndBuild(parsedMap);
+
+        if (result.isEmpty()) {
+            throw new RuntimeException("testValidEvent : fail");
+        }
+
+        System.out.println("testValidEvent : pass");
+    }
+
+    public static void testNegativeAmountFail() {
+
+        Set<String> validIds = Set.of("evt_1");
+
+        EventSemanticValidator validator =
+                new EventSemanticValidator(validIds);
+
+        Map<String, String> parsedMap = new HashMap<>();
+        parsedMap.put("event_id", "evt_1");
+        parsedMap.put("amount", "-100");
+        parsedMap.put("currency", "USD");
+
+        Optional<EventDto> result =
+                validator.validateAndBuild(parsedMap);
+
+        if (result.isPresent()) {
+            throw new RuntimeException("testNegativeAmountFail : fail");
+        }
+
+        System.out.println("testNegativeAmountFail : pass");
+    }
+
+    public static void testInvalidEventIdFail() {
+
+        Set<String> validIds = Set.of("evt_1");
+
+        EventSemanticValidator validator =
+                new EventSemanticValidator(validIds);
+
+        Map<String, String> parsedMap = new HashMap<>();
+        parsedMap.put("event_id", "evt_999");
+        parsedMap.put("amount", "100");
+        parsedMap.put("currency", "USD");
+
+        Optional<EventDto> result =
+                validator.validateAndBuild(parsedMap);
+
+        if (result.isPresent()) {
+            throw new RuntimeException("testInvalidEventIdFail : fail");
+        }
+
+        System.out.println("testInvalidEventIdFail : pass");
+    }
+
+    public static void testMissingRequiredFieldFail() {
+
+        Set<String> validIds = Set.of("evt_1");
+
+        EventSemanticValidator validator =
+                new EventSemanticValidator(validIds);
+
+        Map<String, String> parsedMap = new HashMap<>();
+        parsedMap.put("event_id", "evt_1");
+        parsedMap.put("amount", "100");
+
+        Optional<EventDto> result =
+                validator.validateAndBuild(parsedMap);
+
+        if (result.isPresent()) {
+            throw new RuntimeException("testMissingRequiredFieldFail : fail");
+        }
+
+        System.out.println("testMissingRequiredFieldFail : pass");
+    }
+
+    public static void testNonIntegerAmountFail() {
+
+        Set<String> validIds = Set.of("evt_1");
+
+        EventSemanticValidator validator =
+                new EventSemanticValidator(validIds);
+
+        Map<String, String> parsedMap = new HashMap<>();
+        parsedMap.put("event_id", "evt_1");
+        parsedMap.put("amount", "abc");
+        parsedMap.put("currency", "USD");
+
+        Optional<EventDto> result =
+                validator.validateAndBuild(parsedMap);
+
+        if (result.isPresent()) {
+            throw new RuntimeException("testNonIntegerAmountFail : fail");
+        }
+
+        System.out.println("testNonIntegerAmountFail : pass");
+    }
+}
+
+/**
+ * =========================================
+ * PROCESSOR INTEGRATION TESTS
+ * =========================================
+ */
+final class PaymentEventProcessorTest {
+
+    public static void testProcessorEndToEnd() {
+
+        Set<String> validIds = Set.of("evt_1");
+
+        PaymentEventProcessor processor =
+                new PaymentEventProcessor(validIds);
+
+        List<String> rawEvents = List.of(
+                "event_id=evt_1;amount=100;currency=USD",
+                "event_id=evt_2;amount=200;currency=USD",
+                "event_id=evt_1;amount=-50;currency=USD"
+        );
+
+        List<EventDto> result =
+                processor.process(rawEvents);
+
+        if (result.size() != 1) {
+            throw new RuntimeException("testProcessorEndToEnd : fail");
+        }
+
+        if (!result.get(0).getEventId().equals("evt_1")) {
+            throw new RuntimeException("testProcessorEndToEnd : fail");
+        }
+
+        System.out.println("testProcessorEndToEnd : pass");
+    }
+}
+
+/**
+ * =========================================
+ * MAIN TEST RUNNER
+ * =========================================
+ */
+public class Main {
+
+    public static void main(String[] args) {
+
+        System.out.println("======= TOKENIZER TESTS =======");
+
+        EventTokenizerTest.testValidTokenization();
+        EventTokenizerTest.testNullInput();
+        EventTokenizerTest.testEmptyInput();
+
+        System.out.println("======= PARSER TESTS =======");
+
+        EventParserTest.testValidParsing();
+        EventParserTest.testDuplicateKeysFail();
+        EventParserTest.testMalformedKeyValueFail();
+        EventParserTest.testMultipleEqualsAllowed();
+
+        System.out.println("======= VALIDATOR TESTS =======");
+
+        EventSemanticValidatorTest.testValidEvent();
+        EventSemanticValidatorTest.testNegativeAmountFail();
+        EventSemanticValidatorTest.testInvalidEventIdFail();
+        EventSemanticValidatorTest.testMissingRequiredFieldFail();
+        EventSemanticValidatorTest.testNonIntegerAmountFail();
+
+        System.out.println("======= PROCESSOR TESTS =======");
+
+        PaymentEventProcessorTest.testProcessorEndToEnd();
+    }
+}

@@ -1,0 +1,292 @@
+import java.util.*;
+
+/**
+ * ===========================
+ * DOMAIN DTO
+ * ===========================
+ */
+final class EventDto {
+
+    private final String eventId;
+    private final String merchant;
+    private final String currency;
+    private final int amount;
+
+    public EventDto(
+            String eventId,
+            String merchant,
+            String currency,
+            int amount
+    ) {
+        this.eventId = eventId;
+        this.merchant = merchant;
+        this.currency = currency;
+        this.amount = amount;
+    }
+
+    public String getEventId() {
+        return eventId;
+    }
+
+    public String getMerchant() {
+        return merchant;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public int getAmount() {
+        return amount;
+    }
+
+    @Override
+    public String toString() {
+        return "EventDto{" +
+                "eventId='" + eventId + '\'' +
+                ", merchant='" + merchant + '\'' +
+                ", currency='" + currency + '\'' +
+                ", amount=" + amount +
+                '}';
+    }
+}
+
+/**
+ * ===========================
+ * TOKENIZER
+ * ===========================
+ *
+ * Responsibility:
+ * Convert raw string into tokens.
+ *
+ * Input:
+ * event_id=evt_1;merchant=amazon;amount=100;currency=USD
+ *
+ * Output:
+ * [
+ *   "event_id=evt_1",
+ *   "merchant=amazon",
+ *   ...
+ * ]
+ */
+final class EventTokenizer {
+
+    public List<String> tokenize(String rawEvent) {
+
+        if (rawEvent == null || rawEvent.isBlank()) {
+            return List.of();
+        }
+
+        return Arrays.asList(rawEvent.split(";"));
+    }
+}
+
+/**
+ * ===========================
+ * PARSER
+ * ===========================
+ *
+ * Responsibility:
+ * Convert tokens -> structured raw map.
+ *
+ * NO business validation here.
+ *
+ * Output:
+ * {
+ *   event_id -> evt_1
+ *   amount -> 100
+ * }
+ */
+final class EventParser {
+
+    public Optional<Map<String, String>> parse(
+            List<String> tokens
+    ) {
+
+        if (tokens.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<String, String> parsedMap = new HashMap<>();
+
+        for (String token : tokens) {
+
+            if (!token.contains("=")) {
+                return Optional.empty();
+            }
+
+            String[] split = token.split("=", 2);
+
+            if (split.length != 2) {
+                return Optional.empty();
+            }
+
+            String key = split[0];
+            String value = split[1];
+
+            // duplicate key handling
+            if (parsedMap.containsKey(key)) {
+                return Optional.empty();
+            }
+
+            parsedMap.put(key, value);
+        }
+
+        return Optional.of(parsedMap);
+    }
+}
+
+/**
+ * ===========================
+ * SEMANTIC VALIDATOR
+ * ===========================
+ *
+ * Responsibility:
+ * Business rules validation.
+ *
+ * Examples:
+ * - event_id mandatory
+ * - amount >= 0
+ * - event_id exists in valid set
+ */
+final class EventSemanticValidator {
+
+    private final Set<String> validEventIds;
+
+    public EventSemanticValidator(Set<String> validEventIds) {
+        this.validEventIds = validEventIds;
+    }
+
+    public Optional<EventDto> validateAndBuild(
+            Map<String, String> parsedMap
+    ) {
+
+        // required field validation
+        if (!parsedMap.containsKey("event_id")
+                || !parsedMap.containsKey("amount")
+                || !parsedMap.containsKey("currency")) {
+
+            return Optional.empty();
+        }
+
+        String eventId = parsedMap.get("event_id");
+        String merchant = parsedMap.getOrDefault("merchant", "");
+        String currency = parsedMap.get("currency");
+
+        // semantic validation
+        if (eventId == null
+                || eventId.isBlank()
+                || !validEventIds.contains(eventId)) {
+
+            return Optional.empty();
+        }
+
+        if (currency == null || currency.isBlank()) {
+            return Optional.empty();
+        }
+
+        int amount;
+
+        try {
+            amount = Integer.parseInt(parsedMap.get("amount"));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+
+        if (amount < 0) {
+            return Optional.empty();
+        }
+
+        return Optional.of(
+                new EventDto(
+                        eventId,
+                        merchant,
+                        currency,
+                        amount
+                )
+        );
+    }
+}
+
+/**
+ * ===========================
+ * PROCESSOR
+ * ===========================
+ *
+ * Orchestrates all components.
+ */
+final class PaymentEventProcessor {
+
+    private final EventTokenizer tokenizer;
+    private final EventParser parser;
+    private final EventSemanticValidator validator;
+
+    public PaymentEventProcessor(
+            Set<String> validEventIds
+    ) {
+        this.tokenizer = new EventTokenizer();
+        this.parser = new EventParser();
+        this.validator = new EventSemanticValidator(validEventIds);
+    }
+
+    public List<EventDto> process(
+            List<String> rawEvents
+    ) {
+
+        if (rawEvents == null) {
+            return List.of();
+        }
+
+        List<EventDto> result = new ArrayList<>();
+
+        for (String rawEvent : rawEvents) {
+
+            List<String> tokens =
+                    tokenizer.tokenize(rawEvent);
+
+            Optional<Map<String, String>> parsedEvent =
+                    parser.parse(tokens);
+
+            if (parsedEvent.isEmpty()) {
+                continue;
+            }
+
+            Optional<EventDto> validatedEvent =
+                    validator.validateAndBuild(parsedEvent.get());
+
+            validatedEvent.ifPresent(result::add);
+        }
+
+        return result;
+    }
+}
+
+/**
+ * ===========================
+ * MAIN
+ * ===========================
+ */
+public class Main {
+
+    public static void main(String[] args) {
+
+        Set<String> validEventIds = new HashSet<>();
+        validEventIds.add("evt_1");
+        validEventIds.add("evt_3");
+
+        List<String> rawEvents = List.of(
+                "event_id=evt_1;merchant=amazon;amount=100;currency=USD",
+                "event_id=evt_2;merchant=uber;amount=-50;currency=USD",
+                "event_id=evt_3;merchant=netflix;amount=200",
+                "currency=USD;merchant=amazon;event_id=evt_1;amount=100"
+        );
+
+        PaymentEventProcessor processor =
+                new PaymentEventProcessor(validEventIds);
+
+        List<EventDto> validEvents =
+                processor.process(rawEvents);
+
+        System.out.println(validEvents);
+    }
+}
